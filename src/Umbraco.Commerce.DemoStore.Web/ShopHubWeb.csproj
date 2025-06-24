@@ -1,0 +1,33 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <EnablePackageValidation>false</EnablePackageValidation>
+        <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Flurl.Http" Version="4.0.0" />
+        <PackageReference Include="Umbraco.Cms" Version="13.1.1" />
+        <PackageReference Include="Umbraco.Commerce" Version="13.1.14" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\Umbraco.Commerce.DemoStore\ShopHubClass.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+      <Folder Include="wwwroot\data\" />
+    </ItemGroup>
+
+    <PropertyGroup>
+        <!-- Razor files are needed for the backoffice to work correctly -->
+        <CopyRazorGenerateFilesToPublishDirectory>true</CopyRazorGenerateFilesToPublishDirectory>
+    </PropertyGroup>
+
+    <PropertyGroup>
+        <!-- Remove RazorCompileOnBuild and RazorCompileOnPublish when not using ModelsMode InMemoryAuto -->
+        <RazorCompileOnBuild>false</RazorCompileOnBuild>
+        <RazorCompileOnPublish>false</RazorCompileOnPublish>
+        <UserSecretsId>860d1774-797c-4384-8da4-362572cae7ed</UserSecretsId>
+    </PropertyGroup>
+</Project>
