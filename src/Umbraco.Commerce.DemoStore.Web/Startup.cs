@@ -34,9 +34,7 @@ namespace Umbraco.Commerce.DemoStore.Web
                 options.AddPolicy("AllowReactApp", builder =>
                 {
                     builder.WithOrigins(
-                            "https://fashionhub.netlify.app/",
-                            "http://localhost:3000", 
-                            "https://localhost:3000"
+                            "https://fashionhub.netlify.app/"
                         )
                         .AllowAnyHeader()
                         .AllowAnyMethod()
