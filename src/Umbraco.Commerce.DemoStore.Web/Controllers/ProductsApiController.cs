@@ -176,6 +176,42 @@ public class ProductsApiController : UmbracoApiController
 
         return Ok(filtered);
     }
+    [HttpGet("slug/{slug}")]
+    public IActionResult GetProductBySlug(string slug)
+    {
+        var root = _contentQuery.ContentAtRoot().FirstOrDefault();
+        if (root == null)
+            return NotFound("Root content not found");
+
+        var product = root.DescendantsOfType("productPage")
+            .FirstOrDefault(p => Normalize(p.UrlSegment) == Normalize(slug));
+
+        if (product == null)
+            return NotFound("Product not found");
+
+        var result = new
+        {
+            id = product.Key,
+            title = product.Name,
+            imageUrl1 = product.Value<string>("image1") ?? "",
+            imageUrl2 = product.Value<string>("image2") ?? "",
+            imageUrl3 = product.Value<string>("image3") ?? "",
+            alt = product.Name,
+            affLink = product.Value<string>("affLink") ?? "",
+            price = product.Value<decimal?>("price") ?? 0,
+            brands = product.Value<string>("brand") ?? "",
+            color = product.Value<string>("color") ?? "",
+            material = product.Value<string>("material") ?? "",
+            category = product.Value<IEnumerable<IPublishedContent>>("categories")?.FirstOrDefault()?.Name ?? "",
+            collection = product.AncestorsOrSelf()
+                .FirstOrDefault(a => a.ContentType.Alias == "collectionPage")?
+                .UrlSegment ?? "",
+            gen = product.Value<string>("gen") ?? ""
+        };
+
+        return Ok(result);
+    }
+
     private string Normalize(string? input)
     {
         return input?.ToLowerInvariant()
