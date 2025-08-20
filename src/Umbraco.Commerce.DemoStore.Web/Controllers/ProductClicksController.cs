@@ -1,91 +1,4 @@
-﻿// using Microsoft.AspNetCore.Mvc;
-// using Microsoft.Extensions.Configuration;
-// using System;
-// using System.Collections.Generic;
-// using System.Data.SqlClient;
-// using System.Threading.Tasks;
-// using Microsoft.Data.SqlClient;
-//
-// namespace YourNamespace.Controllers
-// {
-//     [ApiController]
-//     [Route("/umbraco/delivery/api/[controller]")]
-//     public class ProductClicksController : ControllerBase
-//     {
-//         private readonly string _connectionString;
-//
-//         public ProductClicksController(IConfiguration configuration)
-//         {
-//             _connectionString = configuration.GetConnectionString("umbracoDbDSN");
-//         }
-//
-//         [HttpPost("increment")]
-//         public async Task<IActionResult> IncrementClick([FromBody] ProductClickModel model)
-//         {
-//             Console.WriteLine($"Incrementing clicks for ProductId: {model.ProductId}");
-//             using var connection = new SqlConnection(_connectionString);
-//             await connection.OpenAsync();
-//
-//             var existsCmd = new SqlCommand("SELECT COUNT(*) FROM ProductClicks WHERE ProductId = @ProductId", connection);
-//             existsCmd.Parameters.AddWithValue("@ProductId", model.ProductId);
-//
-//             int exists = (int)await existsCmd.ExecuteScalarAsync();
-//
-//             if (exists > 0)
-//             {
-//                 var updateCmd = new SqlCommand("UPDATE ProductClicks SET Clicks = Clicks + 1 WHERE ProductId = @ProductId", connection);
-//                 updateCmd.Parameters.AddWithValue("@ProductId", model.ProductId);
-//                 await updateCmd.ExecuteNonQueryAsync();
-//             }
-//             else
-//             {
-//                 var insertCmd = new SqlCommand(
-//                     "INSERT INTO ProductClicks (ProductId, Title, Clicks) VALUES (@ProductId, @Title, 1)",
-//                     connection
-//                 );
-//                 insertCmd.Parameters.AddWithValue("@ProductId", model.ProductId);
-//                 insertCmd.Parameters.AddWithValue("@Title", model.Title);
-//                 await insertCmd.ExecuteNonQueryAsync();
-//             }
-//
-//             return Ok(new { status = "success" });
-//         }
-//
-//         [HttpGet("top")]
-//         public async Task<IActionResult> GetTopProducts([FromQuery] int count = 4)
-//         {
-//             var topProducts = new List<ProductClickModel>();
-//
-//             using var connection = new SqlConnection(_connectionString);
-//             await connection.OpenAsync();
-//
-//             var selectCmd = new SqlCommand("SELECT TOP (@Count) ProductId, Title, Clicks FROM ProductClicks ORDER BY Clicks DESC", connection);
-//             selectCmd.Parameters.AddWithValue("@Count", count);
-//
-//             using var reader = await selectCmd.ExecuteReaderAsync();
-//             while (await reader.ReadAsync())
-//             {
-//                 topProducts.Add(new ProductClickModel
-//                 {
-//                     ProductId = reader.GetGuid(0),
-//                     Title = reader.GetString(1),
-//                     Clicks = reader.GetInt32(2)
-//                 });
-//             }
-//
-//             return Ok(topProducts);
-//         }
-//     }
-//
-//     public class ProductClickModel
-//     {
-//         public Guid ProductId { get; set; }
-//         public string Title { get; set; }
-//         public int Clicks { get; set; }
-//     }
-// }
-
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
@@ -112,6 +25,11 @@ namespace YourNamespace.Controllers
         {
             try
             {
+                if (model == null || model.ProductId == Guid.Empty)
+                {
+                    return BadRequest(new { status = "error", message = "ProductId este obligatoriu" });
+                }
+
                 Console.WriteLine($"Incrementing clicks for ProductId: {model.ProductId}");
                 
                 using var connection = new SqlConnection(_connectionString);
@@ -159,12 +77,13 @@ namespace YourNamespace.Controllers
             catch (Exception ex)
             {
                 Console.WriteLine($"Error incrementing clicks: {ex.Message}");
-                return BadRequest(new { status = "error", message = ex.Message });
+                Console.WriteLine($"Stack trace: {ex.StackTrace}");
+                return StatusCode(500, new { status = "error", message = ex.Message });
             }
         }
 
-        [HttpGet("top")]
-        public async Task<IActionResult> GetTopProducts([FromQuery] int top = 4, [FromQuery] string period = "today")
+        [HttpGet("today")]
+        public async Task<IActionResult> GetTodayTopProducts([FromQuery] int top = 4)
         {
             try
             {
@@ -173,138 +92,146 @@ namespace YourNamespace.Controllers
                 using var connection = new SqlConnection(_connectionString);
                 await connection.OpenAsync();
 
-                if (period.ToLower() == "today")
+                var todayStart = DateTime.Today;
+                var todayEnd = DateTime.Today.AddDays(1);
+
+                var todayCmd = new SqlCommand(@"
+                    SELECT TOP (@Top) ProductId, Title, SUM(Clicks) as TotalClicks 
+                    FROM ProductClicks 
+                    WHERE ClickDate >= @TodayStart AND ClickDate < @TodayEnd
+                    GROUP BY ProductId, Title
+                    ORDER BY TotalClicks DESC", connection);
+                
+                todayCmd.Parameters.AddWithValue("@Top", top);
+                todayCmd.Parameters.AddWithValue("@TodayStart", todayStart);
+                todayCmd.Parameters.AddWithValue("@TodayEnd", todayEnd);
+
+                using var reader = await todayCmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
                 {
-                    var todayStart = DateTime.Today;
-                    var todayEnd = DateTime.Today.AddDays(1);
-
-                    var todayCmd = new SqlCommand(@"
-                        SELECT TOP (@Top) ProductId, Title, SUM(Clicks) as TotalClicks 
-                        FROM ProductClicks 
-                        WHERE ClickDate >= @TodayStart AND ClickDate < @TodayEnd
-                        GROUP BY ProductId, Title
-                        ORDER BY TotalClicks DESC", connection);
-                    
-                    todayCmd.Parameters.AddWithValue("@Top", top);
-                    todayCmd.Parameters.AddWithValue("@TodayStart", todayStart);
-                    todayCmd.Parameters.AddWithValue("@TodayEnd", todayEnd);
-
-                    using var todayReader = await todayCmd.ExecuteReaderAsync();
-                    while (await todayReader.ReadAsync())
+                    topProducts.Add(new ProductClickModel
                     {
-                        topProducts.Add(new ProductClickModel
-                        {
-                            ProductId = todayReader.GetGuid(0),
-                            Title = todayReader.GetString(1),
-                            Clicks = todayReader.GetInt32(2)
-                        });
-                    }
-                    todayReader.Close();
-
-                    
-                    if (topProducts.Count < top)
-                    {
-                        var yesterdayStart = DateTime.Today.AddDays(-1);
-                        var yesterdayEnd = DateTime.Today;
-                        var remainingCount = top - topProducts.Count;
-
-                        string yesterdayQuery = @"
-                            SELECT TOP (@Remaining) ProductId, Title, SUM(Clicks) as TotalClicks 
-                            FROM ProductClicks 
-                            WHERE ClickDate >= @YesterdayStart AND ClickDate < @YesterdayEnd";
-
-                        // Excluzi produsele care sunt deja în lista de astăzi
-                        if (topProducts.Any())
-                        {
-                            var excludeIds = string.Join("','", topProducts.Select(p => p.ProductId.ToString()));
-                            yesterdayQuery += $" AND ProductId NOT IN ('{excludeIds}')";
-                        }
-
-                        yesterdayQuery += @"
-                            GROUP BY ProductId, Title
-                            ORDER BY TotalClicks DESC";
-
-                        var yesterdayCmd = new SqlCommand(yesterdayQuery, connection);
-                        yesterdayCmd.Parameters.AddWithValue("@Remaining", remainingCount);
-                        yesterdayCmd.Parameters.AddWithValue("@YesterdayStart", yesterdayStart);
-                        yesterdayCmd.Parameters.AddWithValue("@YesterdayEnd", yesterdayEnd);
-
-                        using var yesterdayReader = await yesterdayCmd.ExecuteReaderAsync();
-                        while (await yesterdayReader.ReadAsync())
-                        {
-                            topProducts.Add(new ProductClickModel
-                            {
-                                ProductId = yesterdayReader.GetGuid(0),
-                                Title = yesterdayReader.GetString(1),
-                                Clicks = yesterdayReader.GetInt32(2)
-                            });
-                        }
-                        yesterdayReader.Close();
-                    }
-
-                    // Dacă încă nu sunt suficiente, completează cu toate produsele (all-time)
-                    if (topProducts.Count < top)
-                    {
-                        var remainingCount = top - topProducts.Count;
-                        
-                        string allTimeQuery = @"
-                            SELECT TOP (@Remaining) ProductId, Title, SUM(Clicks) as TotalClicks 
-                            FROM ProductClicks";
-
-                        if (topProducts.Any())
-                        {
-                            var excludeIds = string.Join("','", topProducts.Select(p => p.ProductId.ToString()));
-                            allTimeQuery += $" WHERE ProductId NOT IN ('{excludeIds}')";
-                        }
-
-                        allTimeQuery += @"
-                            GROUP BY ProductId, Title
-                            ORDER BY TotalClicks DESC";
-
-                        var allTimeCmd = new SqlCommand(allTimeQuery, connection);
-                        allTimeCmd.Parameters.AddWithValue("@Remaining", remainingCount);
-
-                        using var allTimeReader = await allTimeCmd.ExecuteReaderAsync();
-                        while (await allTimeReader.ReadAsync())
-                        {
-                            topProducts.Add(new ProductClickModel
-                            {
-                                ProductId = allTimeReader.GetGuid(0),
-                                Title = allTimeReader.GetString(1),
-                                Clicks = allTimeReader.GetInt32(2)
-                            });
-                        }
-                    }
-                }
-                else // alltime
-                {
-                    // Produsele cele mai clickate DE LA ÎNCEPUT
-                    var allTimeCmd = new SqlCommand(@"
-                        SELECT TOP (@Top) ProductId, Title, SUM(Clicks) as TotalClicks 
-                        FROM ProductClicks 
-                        GROUP BY ProductId, Title
-                        ORDER BY TotalClicks DESC", connection);
-                    
-                    allTimeCmd.Parameters.AddWithValue("@Top", top);
-
-                    using var reader = await allTimeCmd.ExecuteReaderAsync();
-                    while (await reader.ReadAsync())
-                    {
-                        topProducts.Add(new ProductClickModel
-                        {
-                            ProductId = reader.GetGuid(0),
-                            Title = reader.GetString(1),
-                            Clicks = reader.GetInt32(2)
-                        });
-                    }
+                        ProductId = reader.GetGuid(0),
+                        Title = reader.GetString(1),
+                        Clicks = reader.GetInt32(2)
+                    });
                 }
 
                 return Ok(topProducts);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error getting top products: {ex.Message}");
-                return BadRequest(new { status = "error", message = ex.Message });
+                Console.WriteLine($"Error getting today's top products: {ex.Message}");
+                return StatusCode(500, new { status = "error", message = ex.Message });
+            }
+        }
+
+        [HttpGet("alltime")]
+        public async Task<IActionResult> GetAllTimeTopProducts([FromQuery] int top = 4)
+        {
+            try
+            {
+                var topProducts = new List<ProductClickModel>();
+
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var allTimeCmd = new SqlCommand(@"
+                    SELECT TOP (@Top) ProductId, Title, SUM(Clicks) as TotalClicks 
+                    FROM ProductClicks 
+                    GROUP BY ProductId, Title
+                    ORDER BY TotalClicks DESC", connection);
+                
+                allTimeCmd.Parameters.AddWithValue("@Top", top);
+
+                using var reader = await allTimeCmd.ExecuteReaderAsync();
+                while (await reader.ReadAsync())
+                {
+                    topProducts.Add(new ProductClickModel
+                    {
+                        ProductId = reader.GetGuid(0),
+                        Title = reader.GetString(1),
+                        Clicks = reader.GetInt32(2)
+                    });
+                }
+
+                return Ok(topProducts);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting all-time top products: {ex.Message}");
+                return StatusCode(500, new { status = "error", message = ex.Message });
+            }
+        }
+
+        [HttpPost("cleanup")]
+        public async Task<IActionResult> CleanupDeletedProducts([FromBody] List<Guid> activeProductIds)
+        {
+            try
+            {
+                if (activeProductIds == null || !activeProductIds.Any())
+                {
+                    return BadRequest(new { status = "error", message = "Lista de produse active este obligatorie" });
+                }
+
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                // Creează lista de parametri pentru query
+                var parameterNames = activeProductIds.Select((id, index) => $"@ProductId{index}").ToArray();
+                var inClause = string.Join(",", parameterNames);
+
+                var cleanupCmd = new SqlCommand($"DELETE FROM ProductClicks WHERE ProductId NOT IN ({inClause})", connection);
+                
+                // Adaugă parametrii
+                for (int i = 0; i < activeProductIds.Count; i++)
+                {
+                    cleanupCmd.Parameters.AddWithValue($"@ProductId{i}", activeProductIds[i]);
+                }
+
+                int deletedRows = await cleanupCmd.ExecuteNonQueryAsync();
+
+                return Ok(new { status = "success", deletedRows = deletedRows });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error cleaning up deleted products: {ex.Message}");
+                return StatusCode(500, new { status = "error", message = ex.Message });
+            }
+        }
+
+        [HttpGet("stats")]
+        public async Task<IActionResult> GetClickStats()
+        {
+            try
+            {
+                using var connection = new SqlConnection(_connectionString);
+                await connection.OpenAsync();
+
+                var statsCmd = new SqlCommand(@"
+                    SELECT 
+                        COUNT(DISTINCT ProductId) as UniqueProducts,
+                        SUM(Clicks) as TotalClicks,
+                        COUNT(*) as TotalRecords
+                    FROM ProductClicks", connection);
+
+                using var reader = await statsCmd.ExecuteReaderAsync();
+                if (await reader.ReadAsync())
+                {
+                    return Ok(new 
+                    {
+                        uniqueProducts = reader.GetInt32(0),
+                        totalClicks = reader.IsDBNull(1) ? 0 : reader.GetInt32(1),
+                        totalRecords = reader.GetInt32(2)
+                    });
+                }
+
+                return Ok(new { uniqueProducts = 0, totalClicks = 0, totalRecords = 0 });
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error getting stats: {ex.Message}");
+                return StatusCode(500, new { status = "error", message = ex.Message });
             }
         }
     }
