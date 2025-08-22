@@ -146,7 +146,7 @@ namespace Umbraco.Commerce.DemoStore.Web.Component
 
         public async Task<string> GeneratePreprocessedXmlAsync()
         {
-            var url = "https://api.2performant.com/feed/2050d2bfb.xml";
+            var url = "https://api.2performant.com/feed/dd446732c.xml";
 
             var httpClient = new HttpClient
             {
