@@ -1,0 +1,17 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnablePackageValidation>false</EnablePackageValidation>
+  </PropertyGroup>
+
+  <ItemGroup>
+      <PackageReference Include="Microsoft.EntityFrameworkCore" Version="8.0.19" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="8.0.19" />
+      <PackageReference Include="Microsoft.EntityFrameworkCore.Relational.Design" Version="1.1.6" />
+      <PackageReference Include="Umbraco.Cms.Web.Website" Version="13.1.1" />
+      <PackageReference Include="Umbraco.Commerce.Cms.Startup" Version="13.1.14" />
+      <PackageReference Include="Umbraco.Commerce.Persistence.Sqlite" Version="13.1.14" />
+  </ItemGroup>
+
+</Project>

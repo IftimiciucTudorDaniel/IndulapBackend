@@ -1,8 +1,0 @@
-﻿@using Umbraco.Commerce.DemoStore.Models;
-@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<Umbraco.Commerce.DemoStore.Models.CategoriesPage>
-@{
-    Layout = "Page.cshtml";
-}
-
-@await Html.PartialAsync("Intro")
-@await Html.PartialAsync("ProductGroupList", Model.Children.OfType<IProductGroupComp>())

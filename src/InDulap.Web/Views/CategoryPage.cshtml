@@ -1,0 +1,7 @@
+﻿@inherits Umbraco.Cms.Web.Common.Views.UmbracoViewPage<InDulap.Models.CategoryPage>
+@{
+    Layout = "Page.cshtml";
+}
+
+@await Html.PartialAsync("Intro")
+@await Component.InvokeAsync("ProductListByCategory", new { category = Model.UrlSegment })
