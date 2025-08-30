@@ -1,10 +1,13 @@
-﻿using System.Collections.Generic;
+﻿using InDulap.Web.Services;
+using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
+using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Mvc;
 using Umbraco.Cms.Core;
-using Umbraco.Cms.Web.Common.Controllers;
 using Umbraco.Cms.Core.Models.PublishedContent;
+using Umbraco.Cms.Web.Common.Controllers;
 using Umbraco.Extensions;
 
 namespace InDulap.Web.Controllers
@@ -16,9 +19,11 @@ namespace InDulap.Web.Controllers
 
         #region Constructor
         
-        public ProductsApiController(IPublishedContentQuery contentQuery)
+        public ProductsApiController(IPublishedContentQuery contentQuery,
+                                     RedisService redisService)
         {
             _contentQuery = contentQuery;
+            _redisService = redisService;
         }
         
         #endregion
@@ -26,18 +31,33 @@ namespace InDulap.Web.Controllers
         #region Properties
 
         private readonly IPublishedContentQuery _contentQuery;
+        private readonly RedisService _redisService;
 
         #endregion
 
         #region Public methods
-        
+
         [HttpGet("filtered")]
-        public IActionResult GetFilteredProducts(
-            string gen = null,
+        public async Task<IActionResult> GetFilteredProducts(
+            string gen = null, 
             string category = null,
             string brand = null,
             string collection = null)
         {
+            var keyParts = new List<string> { "INDULAP_PRODUCTS" };
+            if (!string.IsNullOrEmpty(gen)) keyParts.Add(gen.ToUpperInvariant());
+            if (!string.IsNullOrEmpty(category)) keyParts.Add(category.ToUpperInvariant());
+            if (!string.IsNullOrEmpty(brand)) keyParts.Add(brand.ToUpperInvariant());
+            if (!string.IsNullOrEmpty(collection)) keyParts.Add(collection.ToUpperInvariant());
+            var redisKey = string.Join("_", keyParts);
+
+            var cached = await _redisService.GetStringAsync(redisKey);
+            if (!string.IsNullOrEmpty(cached))
+            {
+                var cachedResult = JsonSerializer.Deserialize<object>(cached);
+                return Ok(cachedResult);
+            }
+
             var root = _contentQuery.ContentAtRoot().FirstOrDefault();
             if (root == null)
                 return NotFound("Root content not found");
@@ -49,11 +69,11 @@ namespace InDulap.Web.Controllers
                     (string.IsNullOrEmpty(gen) || Normalize(p.Value<string>("gen")) == Normalize(gen)) &&
                     (string.IsNullOrEmpty(category) || p.Value<IEnumerable<IPublishedContent>>("categories")?
                         .Any(c => Normalize(c.Name).Contains(Normalize(category))) == true) &&
-                    (string.IsNullOrEmpty(brand) || Normalize(p.Value<string>("brand")) == Normalize(brand))  &&
+                    (string.IsNullOrEmpty(brand) || Normalize(p.Value<string>("brand")) == Normalize(brand)) &&
                     (string.IsNullOrEmpty(collection) ||
-                     p.AncestorsOrSelf()
-                         .Any(a => a.ContentType.Alias == "collectionPage" &&
-                                   Normalize(a.UrlSegment) == Normalize(collection))
+                        p.AncestorsOrSelf()
+                            .Any(a => a.ContentType.Alias == "collectionPage" &&
+                                      Normalize(a.UrlSegment) == Normalize(collection))
                     )
                 )
                 .Select(p => new
@@ -73,8 +93,11 @@ namespace InDulap.Web.Controllers
                         .FirstOrDefault(a => a.ContentType.Alias == "collectionPage")?
                         .UrlSegment ?? "",
                     gen = p.Value<string>("gen") ?? ""
-                });
+                })
+                .ToList();
 
+            var serialized = JsonSerializer.Serialize(filtered);
+            await _redisService.SetStringAsync(redisKey, serialized, TimeSpan.FromHours(24));
 
             return Ok(filtered);
         }

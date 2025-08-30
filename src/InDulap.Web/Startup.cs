@@ -1,4 +1,7 @@
 ﻿using Flurl.Http;
+using InDulap.Data;
+using InDulap.Web.Component;
+using InDulap.Web.Services;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -7,10 +10,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using StackExchange.Redis;
 using System;
-using InDulap.Data;
 using Umbraco.Cms.Core.DependencyInjection;
-using InDulap.Web.Component;
 using Umbraco.Extensions;
 
 namespace InDulap.Web
@@ -52,6 +54,18 @@ namespace InDulap.Web
             //services.AddHostedService<ProductImportBackgroundService>();
             services.AddTransient<ProductImporterLogic>();
             services.AddSingleton<BackgroundImportService>();
+
+            // Register the Redis connection multiplexer as a singleton
+            services.AddSingleton<IConnectionMultiplexer>(sp =>
+            {
+                var configuration = ConfigurationOptions.Parse(
+                    _config.GetSection("Redis:ConnectionString").Value, true);
+                return ConnectionMultiplexer.Connect(configuration);
+            });
+
+            // Register RedisService after the connection multiplexer
+            services.AddTransient<RedisService>();
+
             //services.AddTransient<ProductImporterSosetaria>();
             //services.AddTransient<ProductImporterLogicOtterDays>();
 
