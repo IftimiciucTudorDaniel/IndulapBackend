@@ -2,7 +2,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using Microsoft.Data.SqlClient;
 using System.Linq;
 using InDulap.Data;
 using InDulap.Models;
@@ -10,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Umbraco.Cms.Persistence.EFCore.Scoping;
 using Umbraco.Cms.Web.Common.Controllers;
 using Exception = System.Exception;
+using InDulap.Web.Services;
 
 namespace InDulap.Web.Controllers
 {
@@ -17,12 +17,32 @@ namespace InDulap.Web.Controllers
     [Route("api/[controller]")]
     public class ProductClicksController : UmbracoApiController
     {
+
+        #region Constructor
+
+        public ProductClicksController(IEFCoreScopeProvider<InDulapContext> efCoreScopeProvider,
+                                       RedisService redisService)
+        {
+            _efCoreScopeProvider = efCoreScopeProvider;
+            _redisService = redisService;
+        }
+
+        #endregion
+
+        #region Properties
+
         private readonly IEFCoreScopeProvider<InDulapContext> _efCoreScopeProvider;
+        private readonly RedisService _redisService;
 
-        public ProductClicksController(IEFCoreScopeProvider<InDulapContext> efCoreScopeProvider)
-            => _efCoreScopeProvider = efCoreScopeProvider;
-        private readonly string _connectionString;
+        #endregion
 
+        #region Public Methods
+
+        /// <summary>
+        /// Increment the click count for a product based on ProductId and current date
+        /// </summary>
+        /// <param name="model"></param>
+        /// <returns></returns>
         [HttpPost("increment")]
         public async Task<IActionResult> IncrementClick([FromBody] ProductClickModel model)
         {
@@ -70,9 +90,21 @@ namespace InDulap.Web.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Return the top products of today based on clicks, cached for 24 hours
+        /// </summary>
+        /// <param name="top"></param>
+        /// <returns></returns>
         [HttpGet("today")]
         public async Task<IActionResult> GetTodayTopProducts([FromQuery] int top = 4)
         {
+            var cacheKey = $"TOP_PRODUCTS_TODAY_{top}";
+            var cached = await _redisService.GetStringAsync(cacheKey);
+            if (!string.IsNullOrEmpty(cached))
+            {
+                var cachedResult = System.Text.Json.JsonSerializer.Deserialize<List<ProductClickModel>>(cached);
+                return Ok(cachedResult);
+            }
             using IEfCoreScope<InDulapContext> scope = _efCoreScopeProvider.CreateScope();
             var todayStart = DateTime.Today;
             var todayEnd = DateTime.Today.AddDays(1);
@@ -93,6 +125,7 @@ namespace InDulap.Web.Controllers
                         .Take(top)
                         .ToListAsync();
                     scope.Complete();
+                    await _redisService.SetStringAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(topProducts), TimeSpan.FromHours(24));
                     return Ok(topProducts);
                 }
                 catch(Exception ex)
@@ -105,9 +138,21 @@ namespace InDulap.Web.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Return the top products of all time based on clicks, cached for 30 minutes
+        /// </summary>
+        /// <param name="top"></param>
+        /// <returns></returns>
         [HttpGet("alltime")]
         public async Task<IActionResult> GetAllTimeTopProducts([FromQuery] int top = 4)
         {
+            var cacheKey = $"TOP_PRODUCTS_ALLTIME_{top}";
+            var cached = await _redisService.GetStringAsync(cacheKey);
+            if (!string.IsNullOrEmpty(cached))
+            {
+                var cachedResult = System.Text.Json.JsonSerializer.Deserialize<List<ProductClickModel>>(cached);
+                return Ok(cachedResult);
+            }
             using IEfCoreScope<InDulapContext> scope = _efCoreScopeProvider.CreateScope();
 
             var result = await scope.ExecuteWithContextAsync<IActionResult>(async db =>
@@ -126,6 +171,7 @@ namespace InDulap.Web.Controllers
                         .Take(top)
                         .ToListAsync();
                     scope.Complete();
+                    await _redisService.SetStringAsync(cacheKey, System.Text.Json.JsonSerializer.Serialize(topProducts), TimeSpan.FromMinutes(30));
                     return Ok(topProducts);
                 }
                 catch (Exception ex)
@@ -137,6 +183,11 @@ namespace InDulap.Web.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Cleanup entries for products that no longer exist in the main product catalog
+        /// </summary>
+        /// <param name="activeProductIds"></param>
+        /// <returns></returns>
         [HttpPost("cleanup")]
         public async Task<IActionResult> CleanupDeletedProducts([FromBody] List<Guid> activeProductIds)
         {
@@ -166,6 +217,10 @@ namespace InDulap.Web.Controllers
             return result;
         }
 
+        /// <summary>
+        /// Return basic stats about the ProductClicks table
+        /// </summary>
+        /// <returns></returns>
         [HttpGet("stats")]
         public async Task<IActionResult> GetClickStats()
         {
@@ -193,5 +248,7 @@ namespace InDulap.Web.Controllers
             });
             return result;
         }
+
+        #endregion
     }
 }

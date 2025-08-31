@@ -6,6 +6,8 @@ using Umbraco.Cms.Web.Common.Controllers;
 using Umbraco.Cms.Core.Models.PublishedContent;
 using Umbraco.Cms.Core;
 using Umbraco.Extensions;
+using InDulap.Web.Services;
+using System.Threading.Tasks;
 
 namespace InDulap.Web.Controllers
 {
@@ -13,16 +15,44 @@ namespace InDulap.Web.Controllers
     [Route("api/[controller]")]
     public class NavigationApiController : UmbracoApiController
     {
-        private readonly IPublishedContentQuery _contentQuery;
 
-        public NavigationApiController(IPublishedContentQuery contentQuery)
+        #region Constructor
+
+        public NavigationApiController(IPublishedContentQuery contentQuery,
+                                       RedisService redisService)
         {
             _contentQuery = contentQuery;
+            _redisService = redisService;
         }
 
+        #endregion
+
+        #region Properties
+
+        private readonly IPublishedContentQuery _contentQuery;
+        private readonly RedisService _redisService;
+
+        #endregion
+
+        #region Public methods
+
+        /// <summary>
+        /// Retrieves navigation menu data, including categories and collections, for the application.
+        /// </summary>
+        /// <remarks>This method first attempts to retrieve cached menu data from Redis. If no cached data
+        /// is found,  it queries the content tree to generate the navigation menu data, which includes categories and 
+        /// collections grouped by gender. The generated data is then cached in Redis for subsequent requests.</remarks>
+        /// <returns>An <see cref="IActionResult"/> containing the navigation menu data in JSON format.  Returns <see
+        /// cref="NotFoundResult"/> if the root content is not found.</returns>
         [HttpGet("menu-data")]
-        public IActionResult GetNavigationMenuData()
+        public async Task<IActionResult> GetNavigationMenuData()
         {
+            var cached = _redisService.GetStringAsync("INDULAP_MENU_DATA").Result;
+            if (!string.IsNullOrEmpty(cached))
+            {
+                var cachedResult = System.Text.Json.JsonSerializer.Deserialize<object>(cached);
+                return Ok(cachedResult);
+            }
             var root = _contentQuery.ContentAtRoot().FirstOrDefault();
             if (root == null)
                 return NotFound("Root content not found");
@@ -40,13 +70,30 @@ namespace InDulap.Web.Controllers
                 categories,
                 collectionsWithGenders
             };
-
+            await _redisService.SetStringAsync("INDULAP_MENU_DATA",
+                System.Text.Json.JsonSerializer.Serialize(navigationData),
+                TimeSpan.FromHours(12));
             return Ok(navigationData);
         }
 
+        /// <summary>
+        /// Retrieves the top products for display on the menu.
+        /// </summary>
+        /// <remarks>The method first attempts to retrieve the top products from a Redis cache. If no
+        /// cached data is found,  it queries the content tree for product pages, maps the results, and caches them for
+        /// 12 hours.  This method is designed to optimize performance by leveraging caching.</remarks>
+        /// <param name="take">The maximum number of products to retrieve. Defaults to 4.</param>
+        /// <returns>An <see cref="IActionResult"/> containing the top products as a JSON object.  If cached data is available,
+        /// the cached result is returned. If no root content is found,  a 404 Not Found response is returned.</returns>
         [HttpGet("top-products")]
-        public IActionResult GetTopProductsForMenu(int take = 4)
+        public async Task<IActionResult> GetTopProductsForMenu(int take = 4)
         {
+            var cached = _redisService.GetStringAsync("INDULAP_TOP_PRODUCTS").Result;
+            if (!string.IsNullOrEmpty(cached))
+            {
+                var cachedResult = System.Text.Json.JsonSerializer.Deserialize<object>(cached);
+                return Ok(cachedResult);
+            }
             var root = _contentQuery.ContentAtRoot().FirstOrDefault();
             if (root == null)
                 return NotFound("Root content not found");
@@ -55,13 +102,30 @@ namespace InDulap.Web.Controllers
                 .Take(take)
                 .Select(MapProduct)
                 .ToList();
-
+            await _redisService.SetStringAsync("INDULAP_TOP_PRODUCTS",
+                System.Text.Json.JsonSerializer.Serialize(topProducts),
+                TimeSpan.FromHours(12));
             return Ok(topProducts);
         }
 
+        /// <summary>
+        /// Retrieves the top products of all time, limited to a specified number of results.
+        /// </summary>
+        /// <remarks>The method retrieves the top products from the content hierarchy and caches the
+        /// result for 12 hours  to improve performance. If cached data is available, it is returned directly without
+        /// querying the content hierarchy.</remarks>
+        /// <param name="take">The maximum number of top products to retrieve. Defaults to 4.</param>
+        /// <returns>An <see cref="IActionResult"/> containing the list of top products.  If the data is cached, the cached
+        /// result is returned. If no root content is found, a 404 response is returned.</returns>
         [HttpGet("all-time-top-products")]
-        public IActionResult GetAllTimeTopProducts(int take = 4)
+        public async Task<IActionResult> GetAllTimeTopProducts(int take = 4)
         {
+            var cached = _redisService.GetStringAsync("INDULAP_ALL_TIME_TOP_PRODUCTS").Result;
+            if (!string.IsNullOrEmpty(cached))
+            {
+                var cachedResult = System.Text.Json.JsonSerializer.Deserialize<object>(cached);
+                return Ok(cachedResult);
+            }
             var root = _contentQuery.ContentAtRoot().FirstOrDefault();
             if (root == null)
                 return NotFound("Root content not found");
@@ -70,11 +134,14 @@ namespace InDulap.Web.Controllers
                 .Take(take)
                 .Select(MapProduct)
                 .ToList();
-
+            await _redisService.SetStringAsync("INDULAP_ALL_TIME_TOP_PRODUCTS",
+                System.Text.Json.JsonSerializer.Serialize(allTimeTopProducts),
+                TimeSpan.FromHours(12));
             return Ok(allTimeTopProducts);
         }
+        #endregion
 
-        #region Helpers
+        #region Private methods
 
         private object MapProduct(IPublishedContent p) => new
         {

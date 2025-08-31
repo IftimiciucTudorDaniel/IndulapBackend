@@ -139,6 +139,8 @@ namespace InDulap.Web
                     u.UseBackOfficeEndpoints();
                     u.UseWebsiteEndpoints();
                 });
+
+            app.UseResponseCompression();
         }
     }
 }

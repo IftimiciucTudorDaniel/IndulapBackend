@@ -8,6 +8,10 @@ using Umbraco.Cms.Core.DependencyInjection;
 using Umbraco.Extensions;
 using Umbraco.Cms.Core.Notifications;
 using Umbraco.Commerce.Core.Events.Notification.Handlers.Order;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.DependencyInjection;
+using System.IO.Compression;
 
 namespace InDulap
 {
@@ -53,6 +57,17 @@ namespace InDulap
             });
 
             umbracoBuilder.AddNotificationHandler<UmbracoApplicationStartingNotification, TransformExamineValues>();
+
+            umbracoBuilder.Services.AddResponseCompression(options =>
+            {
+                options.EnableForHttps = true;
+                options.Providers.Add<GzipCompressionProvider>();
+            });
+
+            umbracoBuilder.Services.Configure<GzipCompressionProviderOptions>(options =>
+            {
+                options.Level = CompressionLevel.Optimal;
+            });
 
             return umbracoBuilder;
         }
