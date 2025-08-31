@@ -1,17 +1,18 @@
-﻿using Microsoft.Extensions.Configuration;
-using Umbraco.Commerce.Core.Events.Notification;
-using InDulap.Events;
+﻿using InDulap.Events;
 using InDulap.Web.Extractors;
-using Umbraco.Commerce.Cms.Extractors;
-using Umbraco.Commerce.Extensions;
-using Umbraco.Cms.Core.DependencyInjection;
-using Umbraco.Extensions;
-using Umbraco.Cms.Core.Notifications;
-using Umbraco.Commerce.Core.Events.Notification.Handlers.Order;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.ResponseCompression;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using System.IO.Compression;
+using System.Linq;
+using Umbraco.Cms.Core.DependencyInjection;
+using Umbraco.Cms.Core.Notifications;
+using Umbraco.Commerce.Cms.Extractors;
+using Umbraco.Commerce.Core.Events.Notification;
+using Umbraco.Commerce.Core.Events.Notification.Handlers.Order;
+using Umbraco.Commerce.Extensions;
+using Umbraco.Extensions;
 
 namespace InDulap
 {
@@ -62,6 +63,10 @@ namespace InDulap
             {
                 options.EnableForHttps = true;
                 options.Providers.Add<GzipCompressionProvider>();
+                options.Providers.Add<BrotliCompressionProvider>();
+
+                options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+                    new[] { "application/json" });
             });
 
             umbracoBuilder.Services.Configure<GzipCompressionProviderOptions>(options =>

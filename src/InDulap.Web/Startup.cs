@@ -126,6 +126,8 @@ namespace InDulap.Web
                 }
                 catch { }
             }));
+            
+            app.UseResponseCompression();
 
             app.UseUmbraco()
                 .WithMiddleware(u =>
@@ -140,7 +142,6 @@ namespace InDulap.Web
                     u.UseWebsiteEndpoints();
                 });
 
-            app.UseResponseCompression();
         }
     }
 }
